@@ -63,6 +63,7 @@ class IMDBData(object):
         self.imdb = imdb
         response = urllib2.urlopen('http://uk.imdb.com/title/%s/episodes?season=1' % self.imdb)
         html = response.read()
+        self.soup = BeautifulSoup.BeautifulSoup(html, 'lxml')
 
     def _actors(self):
         actors = []
@@ -89,6 +90,7 @@ if __name__ == '__main__':
         for f in files:
             if f.endswith(('avi', 'mp4', 'm4v', 'mkv')):
                 fname = os.path.join(root, f)
-                record = GetInfo(fname)
-                print record.mediadetails()['General']['Format']
-                record.IMDBData(imdb_id)
+                fileinfo = GetInfo(fname)
+                print fileinfo.mediadetails()['General']['Format']
+                httpdata = IMDBData(imdb_id)
+                print httpdata._actors()
