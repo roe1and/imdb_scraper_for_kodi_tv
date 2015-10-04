@@ -18,9 +18,15 @@ if options.directory is None or options.imid is None:
     print 'Please specify an input directory and imdb directory'
     exit(1)
 
+months = {'January': '01', 'February': '02', 'March': '03',
+          'April': '04', 'May': '05', 'June': '06',
+          'July': '07', 'August': '08', 'September': '09',
+          'October': '10', 'November': '11', 'December': '12'}
+
 tv_directory = options.directory
 imdb_id = options.imid
 episodes = {}
+
 for d in os.listdir(tv_directory):
     if d.startswith('Season'):
         season = d.replace('Season ', '').strip()
@@ -35,9 +41,6 @@ for d in os.listdir(tv_directory):
             episode_id = href[7:16]
             season_episode = 'S%02dE%02d' % (int(season), int(episode))
             episodes[season_episode] = episode_id
-
-print episodes
-exit(1)
 
 class GetInfo(object):
     '''Process the file'''
@@ -76,27 +79,95 @@ class GetInfo(object):
 
 
 class IMDBData(object):
-    def __init__(self, imdb):
-        self.imdb = imdb
-        response = urllib2.urlopen('http://uk.imdb.com/title/%s/episodes?season=1' % self.imdb)
+    def __init__(self, sn_ep):
+        self.sn_ep = sn_ep
+        # http://www.imdb.com/title/tt1539157/?ref_=ttep_ep1
+        response = urllib2.urlopen('http://uk.imdb.com/title/%s/' % episodes[self.sn_ep])
+        #response = urllib2.urlopen('http://uk.imdb.com/title/tt2207831/')
         html = response.read()
         self.soup = BeautifulSoup.BeautifulSoup(html, 'lxml')
+
+    #<title>"Kooperasiestories" Intensies en bedoelings (TV episode) - IMDb</title>
+    @property
+    def title(self):
+        title = self.soup.find('title').text
+        title = str(title)
+        title = title.encode('utf-8')
+        title = title.split('"')
+        title = title[2].split('(')
+        title = title[0]
+        title = title.strip()
+        return title
+
+
+    #<h4 class="inline">Director:</h4>
+    #<h4 class="inline">Writer:</h4>
+    #<h4 class="inline">Stars:</h4>
+    #<h4 class="inline">Plot Keywords:</h4>
+    #<h4 class="inline">Genres:</h4>
+    #<h4 class="inline">Certificate:</h4>
+    #<h4 class="inline">Parents Guide:</h4>
+    #<h4 class="inline">Country:</h4>
+    #<h4 class="inline">Language:</h4>
+    #<h4 class="inline">Release Date:</h4>
+    #<h4 class="inline">Sound Mix:</h4>
+    #<h4 class="inline">Color:</h4>
+    #<h4 class="inline">Aspect Ratio:</h4>
+    # <h4 class="inline">Release Date:</h4> 17 September 2009 (USA)
+    # , text = re.compile('your regex here'), attrs = 
+    @property
+    def director(self):
+        director_block = self.soup.find('div', attrs = {'itemprop': 'director'})
+        director = director_block.find('span', {'itemprop': 'name'}).text
+        director = str(director)
+        director = director.encode('utf-8')
+        return director
+
+    @property
+    def plot(self):
+        plot = self.soup.find('div', attrs = {'class': 'inline', 'itemprop': 'description'})
+        plot = plot.find('p')
+        plot = str(plot.encode('utf-8')[4:].split('<em')[0].strip())
+        #plot = plot
+        return plot
+
+    @property
+    def writer(self):
+        writer_block = self.soup.find('div', attrs = {'itemprop': 'creator'})
+        writer = writer_block.find('span', {'itemprop': 'name'}).text
+        writer = str(writer)
+        writer = writer.encode('utf-8')
+        return writer
+
+    @property
+    def airdate(self):
+        #for sibling in self.soup.findAll('h4', {'class': 'inline'}):
+        #    print sibling
+        title = self.soup.find('h4', text = re.compile('Release Date:'), attrs = {'class': 'inline'})
+        title_str = str(title.next_sibling)
+        day = re.search('([0-9]{2}|[0-9]{1})', title_str)
+        year = re.search('([0-9]{4})', title_str)
+        for month in months:
+            if month in title_str:
+                int_month = months[month]
+        new_year = '%s-%s-%02d' % (year.group(1), int_month, int(day.group(1)))
+        new_year = new_year.encode('utf-8')
+        return new_year
 
     def _actors(self):
         actors = []
         actors_soup = self.soup.findAll('td', {'itemprop': 'actor'})
         for i in range(len(actors_soup)):
-            actor_name = actors_soup[i].find('span', {'itemprop': 'name'})
+            actor_name = actors_soup[i].find('span', {'itemprop': 'name'}).text
             actor_name_string = str(actor_name)
-            actor = fromstring(actor_name_string).find('.//span').text
-            actor = actor.encode('utf-8')
+            actor = actor_name_string.encode('utf-8')
             actors.append(actor)
         characters = []
         characters_soup = self.soup.findAll('td', {'class': 'character'})
         for i in range(len(characters_soup)):
-            char = str(characters_soup[i])
-            char = fromstring(char).find('.//div').text
-            char = char.encode('utf-8')
+            char = characters_soup[i].find('a').text
+            char_str = str(char)
+            char = char_str.encode('utf-8')
             characters.append(char.strip())
         a_c = zip(actors, characters)
         return a_c
@@ -107,7 +178,19 @@ if __name__ == '__main__':
         for f in files:
             if f.endswith(('avi', 'mp4', 'm4v', 'mkv')):
                 fname = os.path.join(root, f)
+                sn_ep = re.search('(S[0-9]{2}E[0-9]{2})', f)
+                try:
+                    episode = sn_ep.group(1)
+                except AttributeError:
+                    print 'Error encountered. Please check that'
+                    print 'your episodes are named correctly. Each episode'
+                    print 'should contain a string that matches this: '
+                    print 'S[0-9]E[0-9]'
+                    exit(1)
                 fileinfo = GetInfo(fname)
-                print fileinfo.mediadetails()['General']['Format']
-                httpdata = IMDBData(imdb_id)
-                print httpdata._actors()
+                #print fileinfo.mediadetails()['General']['Format']
+                print episode
+                httpdata = IMDBData(episode)
+                print httpdata.plot
+                #print httpdata._actors()
+                #exit(1)
