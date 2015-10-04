@@ -26,7 +26,7 @@ months = {'January': '01', 'February': '02', 'March': '03',
 tv_directory = options.directory
 imdb_id = options.imid
 episodes = {}
-
+'''
 for d in os.listdir(tv_directory):
     if d.startswith('Season'):
         season = d.replace('Season ', '').strip()
@@ -41,7 +41,7 @@ for d in os.listdir(tv_directory):
             episode_id = href[7:16]
             season_episode = 'S%02dE%02d' % (int(season), int(episode))
             episodes[season_episode] = episode_id
-
+'''
 class GetInfo(object):
     '''Process the file'''
     def __init__(self, fullfilename):
@@ -82,8 +82,8 @@ class IMDBData(object):
     def __init__(self, sn_ep):
         self.sn_ep = sn_ep
         # http://www.imdb.com/title/tt1539157/?ref_=ttep_ep1
-        response = urllib2.urlopen('http://uk.imdb.com/title/%s/' % episodes[self.sn_ep])
-        #response = urllib2.urlopen('http://uk.imdb.com/title/tt2207831/')
+        # response = urllib2.urlopen('http://uk.imdb.com/title/%s/' % episodes[self.sn_ep])
+        response = urllib2.urlopen('http://uk.imdb.com/title/tt2207831/')
         html = response.read()
         self.soup = BeautifulSoup.BeautifulSoup(html, 'lxml')
 
@@ -99,20 +99,13 @@ class IMDBData(object):
         title = title.strip()
         return title
 
-
-    #<h4 class="inline">Director:</h4>
-    #<h4 class="inline">Writer:</h4>
-    #<h4 class="inline">Stars:</h4>
-    #<h4 class="inline">Plot Keywords:</h4>
-    #<h4 class="inline">Genres:</h4>
-    #<h4 class="inline">Certificate:</h4>
-    #<h4 class="inline">Parents Guide:</h4>
-    #<h4 class="inline">Country:</h4>
-    #<h4 class="inline">Language:</h4>
-    #<h4 class="inline">Release Date:</h4>
-    #<h4 class="inline">Sound Mix:</h4>
-    #<h4 class="inline">Color:</h4>
-    #<h4 class="inline">Aspect Ratio:</h4>
+    #<span class="rating">7.9<span class="ofTen">/10</span></span>
+    @property
+    def rating(self):
+        rating = self.soup.find('span', {'class', 'rating'}).text
+        rating = rating.split('/')[0]
+        return rating
+    
     # <h4 class="inline">Release Date:</h4> 17 September 2009 (USA)
     # , text = re.compile('your regex here'), attrs = 
     @property
@@ -122,6 +115,14 @@ class IMDBData(object):
         director = str(director)
         director = director.encode('utf-8')
         return director
+
+    @property
+    def studio(self):
+        studio_block = self.soup.find('span', attrs = {'itemtype': 'http://schema.org/Organization'})
+        #studio = studio_block.find('span', {'itemprop': 'name'}).text
+        studio = str(studio_block)
+        studio = studio.encode('utf-8')
+        return studio
 
     @property
     def plot(self):
@@ -172,6 +173,68 @@ class IMDBData(object):
         a_c = zip(actors, characters)
         return a_c
 
+
+class XmlWriter(object):
+    """docstring for XmlWriter"""
+    def __init__(self):
+        self.root = etree.Element("episodedetails")
+
+    def write_xml(self, record, video):
+        self.fileinfo = etree.SubElement(self.root, "fileinfo")
+        self.streamdetails = etree.SubElement(self.fileinfo, "streamdetails")
+        self.video = etree.SubElement(self.streamdetails, "video")
+        self.width = etree.SubElement(self.video, "width")
+        self.width.text = 'video.width'
+        self.height = etree.SubElement(self.video, "height")
+        self.height.text = 'video.height'
+        self.aspect = etree.SubElement(self.video, "aspect")
+        self.aspect.text = 'video.aspect'
+        self.codec = etree.SubElement(self.video, "codec")
+        self.codec.text = video.mediadetails()['Video']['Codec ID']
+        self.format = etree.SubElement(self.video, "format")
+        self.format.text = 'AVC'
+        self.duration = etree.SubElement(self.video, "duration")
+        self.duration.text = 'video.duration'
+        self.bitrate = etree.SubElement(self.video, "bitrate")
+        self.bitrate.text = 'video.vbitrate'
+        self.container = etree.SubElement(self.video, "container")
+        self.container.text = '.m4v'
+        self.audio = etree.SubElement(self.streamdetails, "audio")
+        self.codec = etree.SubElement(self.audio, "codec")
+        self.codec.text = video.mediadetails()['Audio']['Format']
+        self.channels = etree.SubElement(self.audio, "channels")
+        self.channels.text = video.mediadetails()['Audio']['Channel(s)'].split(' ')[0]
+        self.bitrate = etree.SubElement(self.audio, "bitrate")
+        self.bitrate.text = '160'
+        self.title = etree.SubElement(self.root, "title")
+        self.title.text = record.title
+        self.season_no = 'record.episode_ser_iss.split(' ')[1]'
+        self.episode_no = 'record.episode_ser_iss.split(' ')[3]'
+        self.season = etree.SubElement(self.root, "season")
+        self.season.text = self.season_no[0]
+        self.episode = etree.SubElement(self.root, "episode")
+        self.episode.text = self.episode_no.strip()
+        self.aired = etree.SubElement(self.root, "aired")
+        self.aired.text = record.airdate
+        self.plot = etree.SubElement(self.root, "plot")
+        self.plot.text = 'plot'
+        self.playcount = etree.SubElement(self.root, "playcount")
+        self.playcount.text = '0'
+        self.lastplayed = etree.SubElement(self.root, "lastplayed")
+        self.playcount.text = ''
+        self.director = etree.SubElement(self.root, "director")
+        self.director.text = record.director
+        self.studio = etree.SubElement(self.root, "studio")
+        self.studio.text = 'SABC'
+        #for actr in record._actors():
+        #    self.actor = etree.SubElement(self.root, "actor")
+        #    self.name = etree.SubElement(self.actor, "name")
+        #    self.name.text = actr[0].decode('utf-8')
+        #    self.role = etree.SubElement(self.actor, "role")
+        #    self.role.text = actr[1].decode('utf-8')
+        content = etree.tostring(self.root, pretty_print=True)
+        print content
+
 if __name__ == '__main__':
 
     for root, dirs, files in os.walk(tv_directory):
@@ -189,8 +252,11 @@ if __name__ == '__main__':
                     exit(1)
                 fileinfo = GetInfo(fname)
                 #print fileinfo.mediadetails()['General']['Format']
+                print fileinfo.mediadetails()['Video']['Codec ID']
                 print episode
                 httpdata = IMDBData(episode)
-                print httpdata.plot
+                print httpdata.studio
+                output = XmlWriter()
+                output.write_xml(httpdata, fileinfo)
                 #print httpdata._actors()
-                #exit(1)
+                exit(1)
