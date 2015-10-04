@@ -20,7 +20,24 @@ if options.directory is None or options.imid is None:
 
 tv_directory = options.directory
 imdb_id = options.imid
+episodes = {}
+for d in os.listdir(tv_directory):
+    if d.startswith('Season'):
+        season = d.replace('Season ', '').strip()
+        response = urllib2.urlopen('http://uk.imdb.com/title/%s/episodes?season=%s' % (imdb_id, season))
+        html = response.read()
+        soup = BeautifulSoup.BeautifulSoup(html, 'lxml')
+        list_items = soup.findAll('div', {'class': 'list_item'})
+        for i in range(len(list_items)):
+            ep_url = list_items[i].find('a', {'itemprop': 'url'})
+            href = str(ep_url['href'])
+            episode = href[30:]
+            episode_id = href[7:16]
+            season_episode = 'S%02dE%02d' % (int(season), int(episode))
+            episodes[season_episode] = episode_id
 
+print episodes
+exit(1)
 
 class GetInfo(object):
     '''Process the file'''
